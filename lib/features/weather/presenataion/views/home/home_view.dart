@@ -5,6 +5,8 @@ import 'package:burevi_weather/features/weather/presenataion/views/home/widgets/
 import 'package:burevi_weather/features/weather/presenataion/widgets/loading.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'widgets/app_bar.dart';
@@ -19,11 +21,83 @@ class HomeViewPage extends StatefulWidget {
 class _HomeViewPageState extends State<HomeViewPage> {
   WeatherDetails? weatherDetails;
 
+  String? country, locality;
+
   @override
   void initState() {
-    // TODO: implement initState
     super.initState();
-    getWeatherData();
+    getCurrentLocationData();
+  }
+
+  getCurrentLocationData() async {
+    Position position = await _determinePosition();
+    await getAddressFromLatLong(position);
+    await getWeatherData();
+    setState(() {});
+  }
+
+  Future<Position> _determinePosition() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      await Geolocator.openLocationSettings();
+      return Future.error('Location services are disabled.');
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        return Future.error('Location permissions are denied');
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      return Future.error(
+          'Location permissions are permanently denied, we cannot request permissions.');
+    }
+
+    return await Geolocator.getCurrentPosition();
+  }
+
+  Future<void> getAddressFromLatLong(Position position) async {
+    List<Placemark> placeMark =
+        await placemarkFromCoordinates(position.latitude, position.longitude);
+    Placemark place = placeMark[0];
+    setState(() {
+      country = place.country;
+      locality = place.locality;
+    });
+  }
+
+  getWeatherData() async {
+    try {
+      var response = await Dio().get(
+        "https://api.openweathermap.org/data/2.5/weather?q=$country&appid=c48cc178df6fe970fbe9d5fd1d9e697c",
+      );
+      if (response.data["cod"] == 200) {
+        setState(() {
+          weatherDetails = WeatherDetails(
+              feelsLike: response.data["main"]["feels_like"].toDouble(),
+              lat: response.data["coord"]["lat"].toDouble(),
+              lon: response.data["coord"]["lon"].toDouble(),
+              main: response.data["weather"][0]["main"],
+              name: response.data["name"],
+              pressure: response.data["main"]["pressure"].toDouble(),
+              temp: response.data["main"]["temp"].toDouble(),
+              weatherDescription: response.data["weather"][0]["description"],
+              wind: response.data["wind"]["speed"].toDouble(),
+              country: response.data["sys"]["country"]);
+        });
+        print(weatherDetails?.weatherDescription);
+      } else {
+        print("nothing!");
+      }
+    } catch (e) {
+      print(e);
+    }
   }
 
   @override
@@ -41,10 +115,13 @@ class _HomeViewPageState extends State<HomeViewPage> {
                     children: [
                       PlaceName(
                         height: height,
-                        country: weatherDetails!.country,
-                        name: weatherDetails!.name,
+                        country: country.toString(),
+                        name: locality.toString(),
                       ),
-                      CurrentWeather(height: height, weather: weatherDetails!),
+                      CurrentWeather(
+                        height: height,
+                        weather: weatherDetails!,
+                      ),
                       Padding(
                         padding: EdgeInsets.symmetric(
                           vertical: (height * 0.03),
@@ -84,7 +161,10 @@ class _HomeViewPageState extends State<HomeViewPage> {
                           ],
                         ),
                       ),
-                      ForecastingCardView(width: width, height: height,weather:weatherDetails!),
+                      ForecastingCardView(
+                          width: width,
+                          height: height,
+                          weather: weatherDetails!),
                     ],
                   )
                 : const Loading(),
@@ -92,34 +172,6 @@ class _HomeViewPageState extends State<HomeViewPage> {
         ),
       ),
     );
-  }
-
-  getWeatherData() async {
-    try {
-      var response = await Dio().get(
-        "https://api.openweathermap.org/data/2.5/weather?q=ampara&appid=c48cc178df6fe970fbe9d5fd1d9e697c",
-      );
-      if (response.data["cod"] == 200) {
-        setState(() {
-          weatherDetails = WeatherDetails(
-              feelsLike: response.data["main"]["feels_like"],
-              lat: response.data["coord"]["lat"],
-              lon: response.data["coord"]["lon"],
-              main: response.data["weather"][0]["main"],
-              name: response.data["name"],
-              pressure: response.data["main"]["pressure"].toDouble(),
-              temp: response.data["main"]["temp"],
-              weatherDescription: response.data["weather"][0]["description"],
-              wind: response.data["wind"]["speed"],
-              country: response.data["sys"]["country"]);
-        });
-        print(weatherDetails?.wind);
-      } else {
-        print("nothing!");
-      }
-    } catch (e) {
-      print(e);
-    }
   }
 }
 

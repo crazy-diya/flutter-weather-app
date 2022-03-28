@@ -41,6 +41,8 @@ dependencies:
   dio: ^4.0.4
   flutter_spinkit:
   intl:
+  geolocator: ^8.2.0
+  geocoding: ^2.0.4
 
 dev_dependencies:
   flutter_test:
